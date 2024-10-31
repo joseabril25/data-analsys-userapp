@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
 import os
 
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
+
 # Create a directory for saving figures if it doesn't exist
 os.makedirs('figures', exist_ok=True)
 
@@ -58,6 +62,15 @@ def perform_eda(df):
     plt.tight_layout()
     fig4.savefig('figures/1_4_correlation_heatmap.png', dpi=300, bbox_inches='tight')
     plt.close(fig4)
+
+    # 1.5 Distance Travelled Distribution
+
+    fig5, ax5 = plt.subplots(figsize=(10, 6))
+    sns.histplot(data=df, x='Distance Travelled (km)', bins=30, ax=ax5)
+    ax5.set_title('Distribution of Distance Travelled')
+    plt.tight_layout()
+    fig5.savefig('figures/1_5_distance_dist.png', dpi=300, bbox_inches='tight')
+    plt.close(fig5)
     
     return correlation
 
@@ -232,6 +245,102 @@ def perform_regression(df):
         }
     }
 
+# Updated function for plotting confusion matrix
+def plot_confusion_matrices(y_test, dt_pred, rf_pred, class_labels):
+    # Create confusion matrices
+    dt_cm = confusion_matrix(y_test, dt_pred)
+    rf_cm = confusion_matrix(y_test, rf_pred)
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+    
+    # Plot Decision Tree confusion matrix
+    sns.heatmap(dt_cm, annot=True, fmt='d', cmap='Blues', ax=ax1,
+                xticklabels=class_labels,
+                yticklabels=class_labels)
+    ax1.set_title('Decision Tree Confusion Matrix')
+    ax1.set_xlabel('Predicted')
+    ax1.set_ylabel('Actual')
+    
+    # Plot Random Forest confusion matrix
+    sns.heatmap(rf_cm, annot=True, fmt='d', cmap='Blues', ax=ax2,
+                xticklabels=class_labels,
+                yticklabels=class_labels)
+    ax2.set_title('Random Forest Confusion Matrix')
+    ax2.set_xlabel('Predicted')
+    ax2.set_ylabel('Actual')
+    
+    return fig
+
+# Updated classification function
+def perform_classification(df):
+    # Prepare features for classification
+    le = LabelEncoder()
+    df['Activity_Level_Encoded'] = le.fit_transform(df['Activity Level'])
+    df['Location_Encoded'] = le.fit_transform(df['Location'])
+    
+    # Features for predicting Activity Level
+    X = df[['Age', 'App Sessions', 'Distance Travelled (km)', 
+            'Calories Burned', 'Location_Encoded']]
+    y = df['Activity_Level_Encoded']
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    # Scale the features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # 1. Decision Tree Classifier
+    dt_clf = DecisionTreeClassifier(random_state=42)
+    dt_clf.fit(X_train_scaled, y_train)
+    dt_pred = dt_clf.predict(X_test_scaled)
+    
+    # 2. Random Forest Classifier
+    rf_clf = RandomForestClassifier(random_state=42)
+    rf_clf.fit(X_train_scaled, y_train)
+    rf_pred = rf_clf.predict(X_test_scaled)
+    
+    # Feature importance from Random Forest
+    feature_importance = pd.DataFrame({
+        'Feature': X.columns,
+        'Importance': rf_clf.feature_importances_
+    }).sort_values('Importance', ascending=False)
+    
+    # Get unique activity levels for labels
+    class_labels = ['Sedentary', 'Moderate', 'Active']
+    
+    # Create and save confusion matrix plots
+    cm_fig = plot_confusion_matrices(y_test, dt_pred, rf_pred, class_labels)
+    cm_fig.savefig('figures/5_1_classification_confusion_matrix.png', 
+                   dpi=300, bbox_inches='tight')
+    plt.close(cm_fig)
+    
+    # Feature Importance Plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(data=feature_importance, x='Importance', y='Feature', ax=ax)
+    ax.set_title('Feature Importance in Activity Level Classification')
+    plt.tight_layout()
+    fig.savefig('figures/5_2_classification_feature_importance.png', 
+                dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return {
+        'decision_tree': {
+            'accuracy': accuracy_score(y_test, dt_pred),
+            'classification_report': classification_report(y_test, dt_pred),
+            'confusion_matrix': confusion_matrix(y_test, dt_pred)
+        },
+        'random_forest': {
+            'accuracy': accuracy_score(y_test, rf_pred),
+            'classification_report': classification_report(y_test, rf_pred),
+            'feature_importance': feature_importance
+        }
+    }
+
 # Execute analyses
 print("Performing Exploratory Data Analysis...")
 correlation = perform_eda(df)
@@ -248,6 +357,23 @@ print("\nPerforming Regression Analysis...")
 # Update the execution part:
 print("\nPerforming Regression Analysis...")
 regression_results = perform_regression(df)
+
+# Update the classification analysis execution part:
+print("\nPerforming Classification Analysis...")
+classification_results = perform_classification(df)
+
+# Print classification results
+print("\nDecision Tree Results:")
+print(f"Accuracy: {classification_results['decision_tree']['accuracy']:.3f}")
+print("\nClassification Report:")
+print(classification_results['decision_tree']['classification_report'])
+
+print("\nRandom Forest Results:")
+print(f"Accuracy: {classification_results['random_forest']['accuracy']:.3f}")
+print("\nClassification Report:")
+print(classification_results['random_forest']['classification_report'])
+print("\nFeature Importance for Classification:")
+print(classification_results['random_forest']['feature_importance'])
 
 # Print detailed results
 print("\nCalories Burned Prediction Results:")
